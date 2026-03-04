@@ -1,323 +1,138 @@
-#!/bin/bash
-# ----------------------------------------------------
-#   AISubtitles Plugin Installer (Auto-Restart)
-# ----------------------------------------------------
+#!/bin/sh
 
-PLUGIN_NAME="AISubtitles"
-PLUGIN_VERSION="2.7"
-PLUGIN_URL="https://raw.githubusercontent.com/Ham-ahmed/27/refs/heads/main/AISubtitles-2.7.tar.gz"
+# Color definitions
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+WHITE='\033[1;37m'
+NC='\033[0m' # No Color
 
-clear
-echo ""
-echo "#######################################"
-echo "      AISubtitles Plugin Installer     "
-echo "#######################################"
-echo "    This script will install the       "
-echo "         plugin AISubtitles            "
-echo "  on your Enigma2-based receiver.      "
-echo "                                       "
-echo "      Version   : $PLUGIN_VERSION      "
-echo "    Developer : H-Ahmed                "
-echo "#######################################"
-echo ""
-
-# Check user permissions
-if [ "$(id -u)" != "0" ]; then
-    echo " This script must be run as root. Use: sudo $0"
-    exit 1
-fi
-
-# Check required commands
-for cmd in wget tar; do
-    if ! command -v "$cmd" >/dev/null 2>&1; then
-        echo " $cmd is not installed. Aborting."
-        exit 1
-    fi
-done
-
-# Define paths
-ZIP_PATH="/tmp/AISubtitles.tar.gz"
-EXTRACT_BASE_DIR="/tmp"
-EXTRACT_DIR="/tmp/AISubtitles"
-INSTALL_DIR="/usr/lib/enigma2/python/Plugins/Extensions"
-BACKUP_DIR="/tmp/plugin_backup_$(date +%Y%m%d_%H%M%S)"
-
-# Create download directory
-mkdir -p /tmp || {
-    echo " Cannot create /tmp directory. Aborting."
-    exit 1
+# Cleanup function
+cleanup() {
+    rm -f "$package" 2>/dev/null
+    rm -rf /tmp/*.ipk /tmp/*.tar.gz ./CONTROL ./control ./postinst ./preinst ./prerm ./postrm 2>/dev/null
 }
 
-# ----------------------------------------------
-# Step 1: Download the package
-# ----------------------------------------------
-echo "[1/5] Downloading plugin package..."
-echo "    Source: $PLUGIN_URL"
-echo "    Destination: $ZIP_PATH"
-
-# Create backup if plugin already exists
-if [ -d "$INSTALL_DIR/$PLUGIN_NAME" ]; then
-    echo "    Existing plugin found. Creating backup..."
-    mkdir -p "$BACKUP_DIR"
-    if cp -r "$INSTALL_DIR/$PLUGIN_NAME" "$BACKUP_DIR/" 2>/dev/null; then
-        echo "    Backup created at: $BACKUP_DIR"
-    else
-        echo "    Warning: Could not create backup"
-    fi
-fi
-
-# Download attempts
-DOWNLOAD_SUCCESS=0
-for i in 1 2 3; do
-    echo "    Download attempt $i/3..."
-    
-    if wget --no-check-certificate --timeout=30 --tries=1 \
-            --show-progress --progress=dot:giga \
-            "$PLUGIN_URL" -O "$ZIP_PATH" 2>&1 | \
-            grep -q '100%'; then
-        DOWNLOAD_SUCCESS=1
-        break
-    else
-        echo "    Download attempt $i failed."
-        rm -f "$ZIP_PATH" 2>/dev/null
-        if [ $i -eq 3 ]; then
-            echo "    All download attempts failed. Please check your internet connection."
-            exit 1
-        fi
-        sleep 2
-    fi
-done
-
-# Check downloaded file
-if [ ! -f "$ZIP_PATH" ]; then
-    echo "    Downloaded file is missing. Aborting."
+# Check root permissions
+if [ "$(id -u)" -ne 0 ]; then
+    echo "${RED}> Script must be run with root privileges${NC}"
     exit 1
 fi
 
-FILE_SIZE=$(wc -c < "$ZIP_PATH" 2>/dev/null || echo 0)
-if [ "$FILE_SIZE" -lt 1000 ]; then
-    echo "    Downloaded file is too small ($FILE_SIZE bytes). Please check the URL."
-    rm -f "$ZIP_PATH"
-    exit 1
-fi
+# Set trap for cleanup on exit
+trap cleanup EXIT
 
-echo "    Download completed successfully. Size: $FILE_SIZE bytes"
+# Initial cleanup
+cleanup
 
-# ----------------------------------------------
-# Step 2: Extract files
-# ----------------------------------------------
-echo "[2/5] Extracting files..."
+# Configuration
+plugin="AISubtitles"
+version="2.7"
+url="https://raw.githubusercontent.com/Ham-ahmed/27/refs/heads/main/AISubtitles-2.7.tar.gz"
+package="/var/volatile/tmp/$plugin-$version.tar.gz"
 
-rm -rf "$EXTRACT_DIR" 2>/dev/null
+# Create target directory if it doesn't exist
+mkdir -p "/var/volatile/tmp"
 
-if ! tar -tzf "$ZIP_PATH" >/dev/null 2>&1; then
-    echo "    Archive is corrupted or invalid."
-    rm -f "$ZIP_PATH"
-    exit 1
-fi
-
-if ! tar -xzf "$ZIP_PATH" -C "$EXTRACT_BASE_DIR" 2>/dev/null; then
-    echo "    Extraction failed. The archive may be corrupted."
-    rm -f "$ZIP_PATH"
-    exit 1
-fi
-
-if [ ! -d "$EXTRACT_DIR" ]; then
-    EXTRACT_DIR=$(find "$EXTRACT_BASE_DIR" -maxdepth 2 -type d \
-        \( -name "*$PLUGIN_NAME*" -o -name "*AISubtitles*" \) | head -1)
-    
-    if [ -z "$EXTRACT_DIR" ] || [ ! -d "$EXTRACT_DIR" ]; then
-        EXTRACT_DIR="/tmp/${PLUGIN_NAME}_extract"
-        rm -rf "$EXTRACT_DIR" 2>/dev/null
-        mkdir -p "$EXTRACT_DIR"
-        if ! tar -xzf "$ZIP_PATH" -C "$EXTRACT_DIR" 2>/dev/null; then
-            echo "    Cannot extract plugin files from archive."
-            rm -f "$ZIP_PATH"
-            rm -rf "$EXTRACT_DIR"
-            exit 1
-        fi
-    fi
-fi
-
-if [ ! -d "$EXTRACT_DIR" ] || [ -z "$(ls -A "$EXTRACT_DIR" 2>/dev/null)" ]; then
-    echo "    Cannot find plugin files in archive."
-    rm -f "$ZIP_PATH"
-    exit 1
-fi
-
-echo "    Extracted to: $EXTRACT_DIR"
-
-# ----------------------------------------------
-# Step 3: Locate plugin files
-# ----------------------------------------------
-echo "[3/5] Locating plugin files..."
-
-PLUGIN_CONTENT_DIR=""
-
-possible_paths=(
-    "$EXTRACT_DIR/$PLUGIN_NAME"
-    "$EXTRACT_DIR/usr/lib/enigma2/python/Plugins/Extensions/$PLUGIN_NAME"
-    "$EXTRACT_DIR/Extensions/$PLUGIN_NAME"
-    "$EXTRACT_DIR/plugin"
-    "$EXTRACT_DIR"
-)
-
-for path in "${possible_paths[@]}"; do
-    if [ -d "$path" ] && ( [ -f "$path/__init__.py" ] || [ -f "$path/plugin.py" ] || [ -f "$path/Plugin.py" ] ); then
-        PLUGIN_CONTENT_DIR="$path"
-        echo "    Found plugin structure at: $path"
-        break
-    fi
-done
-
-if [ -z "$PLUGIN_CONTENT_DIR" ]; then
-    SEARCH_DIR=$(find "$EXTRACT_DIR" -type f \
-        \( -name "plugin.py" -o -name "__init__.py" -o -name "Plugin.py" \) \
-        -exec dirname {} \; 2>/dev/null | head -1)
-    
-    if [ -n "$SEARCH_DIR" ]; then
-        PLUGIN_CONTENT_DIR="$SEARCH_DIR"
-        echo "    Found plugin files at: $PLUGIN_CONTENT_DIR"
-    fi
-fi
-
-if [ -z "$PLUGIN_CONTENT_DIR" ]; then
-    echo "    Cannot locate plugin files in the extracted archive."
-    echo "    Archive structure:"
-    find "$EXTRACT_DIR" -type f 2>/dev/null | head -20
-    rm -rf "$EXTRACT_DIR"
-    rm -f "$ZIP_PATH"
-    exit 1
-fi
-
-# ----------------------------------------------
-# Step 4: Install the plugin
-# ----------------------------------------------
-echo "[4/5] Installing plugin..."
-
-mkdir -p "$INSTALL_DIR" || {
-    echo "    Cannot create installation directory: $INSTALL_DIR"
-    exit 1
-}
-
-if [ -d "$INSTALL_DIR/$PLUGIN_NAME" ]; then
-    echo "    Removing old installation..."
-    rm -rf "$INSTALL_DIR/$PLUGIN_NAME" 2>/dev/null
-fi
-
-echo "    Copying to: $INSTALL_DIR/$PLUGIN_NAME"
-if cp -r "$PLUGIN_CONTENT_DIR" "$INSTALL_DIR/$PLUGIN_NAME" 2>/dev/null; then
-    echo "    Files copied successfully."
-else
-    echo "    Copy failed, trying alternative method..."
-    
-    if command -v rsync >/dev/null 2>&1; then
-        if rsync -a "$PLUGIN_CONTENT_DIR/" "$INSTALL_DIR/$PLUGIN_NAME/" 2>/dev/null; then
-            echo "    Files copied successfully using rsync."
-        else
-            echo "    Copy failed. Aborting."
-            exit 1
-        fi
-    else
-        (cd "$PLUGIN_CONTENT_DIR" && find . -type f -print0 | \
-            cpio -p0dum "$INSTALL_DIR/$PLUGIN_NAME" 2>/dev/null) || {
-            echo "    Failed to copy plugin files."
-            exit 1
-        }
-    fi
-fi
-
-if [ ! -d "$INSTALL_DIR/$PLUGIN_NAME" ]; then
-    echo "    Installation failed. Plugin directory not created."
-    exit 1
-fi
-
-# ----------------------------------------------
-# Step 5: Set permissions and cleanup
-# ----------------------------------------------
-echo "[5/5] Setting permissions and cleaning up..."
-
-find "$INSTALL_DIR/$PLUGIN_NAME" -type d -exec chmod 755 {} \; 2>/dev/null
-find "$INSTALL_DIR/$PLUGIN_NAME" -type f -name "*.py" -exec chmod 644 {} \; 2>/dev/null
-find "$INSTALL_DIR/$PLUGIN_NAME" -type f -name "*.pyo" -exec chmod 644 {} \; 2>/dev/null
-find "$INSTALL_DIR/$PLUGIN_NAME" -type f -name "*.pyc" -exec chmod 644 {} \; 2>/dev/null
-find "$INSTALL_DIR/$PLUGIN_NAME" -type f -name "*.so" -exec chmod 755 {} \; 2>/dev/null
-
-chown -R root:root "$INSTALL_DIR/$PLUGIN_NAME" 2>/dev/null
-
-rm -rf "$EXTRACT_DIR" 2>/dev/null
-rm -f "$ZIP_PATH" 2>/dev/null
-
-echo "    Permissions set."
-echo "    Temporary files cleaned."
-
-# Display installation summary
-echo ""
-echo "#######################################"
-echo "#        INSTALLATION COMPLETE        #"
-echo "#######################################"
-echo "#         Plugin: $PLUGIN_NAME        #"
-echo "#         Version: $PLUGIN_VERSION    #"
-echo "# Location: $INSTALL_DIR/$PLUGIN_NAME #"
-echo "#######################################"
-echo ""
-
-FILE_COUNT=$(find "$INSTALL_DIR/$PLUGIN_NAME" -type f 2>/dev/null | wc -l)
-echo "Files installed: $FILE_COUNT"
-echo ""
-
-# =================================================
-# Automatic restart without user interaction
-# =================================================
-echo "###########################################"
-echo "#   Preparing to restart Enigma2...       #"
-echo "###########################################"
-echo ""
-echo "Restarting Enigma2 in 3 seconds..."
+# ===================================================================
+# Modification 1: Display script content during download
+# ===================================================================
+echo "> Starting download of package $plugin-$version ..."
+echo "> Displaying script content during download:"
+echo "————————————————————————————————————————"
+# Display next few lines of the script (simulating content display)
+# Actually, here you can display instructions or package details
+echo "${CYAN}Package Information:${NC}"
+echo "${WHITE}- Package name: $plugin${NC}"
+echo "${WHITE}- Version: $version${NC}"
+echo "${WHITE}- Source: GitLab${NC}"
+echo "${WHITE}- Description: Comprehensive package for AISubtitles-2.7${NC}"
+echo "————————————————————————————————————————"
 sleep 3
 
-echo "Attempting to restart Enigma2..."
+# Check internet connection and download package
+if command -v wget >/dev/null 2>&1; then
+    # Check if URL is accessible
+    if ! wget --spider -q "$url"; then
+        echo "${RED}> Failed to connect to internet or invalid URL${NC}"
+        exit 1
+    fi
+    # Download package with progress display
+    echo "> Downloading (with progress display) ..."
+    wget --no-check-certificate --timeout=10 --tries=3 -O "$package" "$url" 2>&1 | while read line; do
+        # Display download progress (you can customize this message)
+        echo -n "."
+    done
+    echo "" # New line after dots finish
+elif command -v curl >/dev/null 2>&1; then
+    # Check if URL is accessible
+    if ! curl -s --head "$url" | head -n 1 | grep "200 OK" >/dev/null; then
+        echo "${RED}> Failed to connect to internet or invalid URL${NC}"
+        exit 1
+    fi
+    # Download package with progress display
+    echo "> Downloading (with progress display) ..."
+    curl -# -k --connect-timeout 10 --retry 3 -o "$package" "$url"
+else
+    echo "${RED}> Neither wget nor curl found${NC}"
+    exit 1
+fi
 
-# Try multiple methods
-if [ -f /etc/init.d/enigma2 ]; then
-    /etc/init.d/enigma2 restart
-    echo "Enigma2 restart initiated via init script."
-elif command -v systemctl >/dev/null 2>&1; then
-    if systemctl restart enigma2 2>/dev/null; then
-        echo "Enigma2 restart initiated via systemctl."
+# Check if download was successful
+if [ $? -ne 0 ] || [ ! -f "$package" ]; then
+    echo "${RED}> Package download failed${NC}"
+    exit 1
+fi
+
+# ===================================================================
+# Modification 2: Simplified success message after download
+# ===================================================================
+echo ""
+echo -e "${GREEN}═══════════════════════════════════════════════════════════════${NC}"
+echo -e "${GREEN}             ✅ Download completed successfully!               ${NC}"
+echo -e "${GREEN}═══════════════════════════════════════════════════════════════${NC}"
+echo -e "${BLUE}   ▶ Package downloaded to: $package${NC}"
+echo -e "${BLUE}   ▶ Package size: $(du -h $package | cut -f1)${NC}"
+echo -e "${GREEN}═══════════════════════════════════════════════════════════════${NC}"
+echo ""
+echo "> Extracting package and installing files ..."
+sleep 2
+
+# Extract package
+tar -xzf "$package" -C /
+extract=$?
+
+# ===================================================================
+# Modification 3: Success and completion message (after installation)
+# ===================================================================
+if [ $extract -eq 0 ]; then
+    echo ""
+    echo -e "${GREEN}═══════════════════════════════════════════════════════════════${NC}"
+    echo -e "${GREEN}      ✅ Download and installation completed successfully!     ${NC}"
+    echo -e "${GREEN}═══════════════════════════════════════════════════════════════${NC}"
+    echo -e "${BLUE}     ▶ Package: $plugin"
+    echo -e "${BLUE}     ▶ Version: v8.0"
+    echo -e "${YELLOW}   ▶ Note: Device will restart automatically"
+    echo -e "${CYAN}     ▶ Uploaded by: HAMDY_AHMED"
+    echo -e "${WHITE}    ▶ Group link: https://www.facebook.com/share/g/18qCRuHz26/"
+    echo -e "${GREEN}═══════════════════════════════════════════════════════════════${NC}"
+    echo ""
+    echo -e "${YELLOW}⏳ Enigma2 will restart in 3 seconds...${NC}"
+    sleep 3
+    # Safe Enigma2 restart
+    if command -v init >/dev/null 2>&1; then
+        init 4 && sleep 2 && init 3 &
     else
-        echo "Systemctl restart failed, trying alternative method."
-        killall -9 enigma2 2>/dev/null
-        sleep 2
-        if [ -f /usr/bin/enigma2.sh ]; then
-            /usr/bin/enigma2.sh >/dev/null 2>&1 &
-            echo "Enigma2 started via enigma2.sh script."
-        fi
+        killall enigma2
     fi
 else
-    # Fallback
-    killall -9 enigma2 2>/dev/null
-    sleep 2
-    if [ -f /usr/bin/enigma2.sh ]; then
-        /usr/bin/enigma2.sh >/dev/null 2>&1 &
-        echo "Enigma2 started via enigma2.sh script."
-    fi
+    echo -e "${RED}═══════════════════════════════════════════════════════════════${NC}"
+    echo -e "${RED}              ❌ Installation failed                           ${NC}"
+    echo -e "${RED}         Failed to install package $plugin-$version            ${NC}"
+    echo -e "${RED}═══════════════════════════════════════════════════════════════${NC}"
+    exit 1
 fi
-
-# Final message
-echo ""
-echo "######################################"
-echo "#   Installation process completed!  #"
-echo "######################################"
-
-if [ -d "$BACKUP_DIR" ] && [ -n "$(ls -A "$BACKUP_DIR" 2>/dev/null)" ]; then
-    echo ""
-    echo "Backup of previous version saved at:"
-    echo "  $BACKUP_DIR"
-    echo "To restore: cp -r \"$BACKUP_DIR/$PLUGIN_NAME\" \"$INSTALL_DIR/\""
-fi
-
-echo ""
-echo "Thank you for installing AISubtitles plugin!"
 
 exit 0
