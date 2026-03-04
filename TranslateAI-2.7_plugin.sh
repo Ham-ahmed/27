@@ -1,6 +1,6 @@
 #!/bin/bash
 # ----------------------------------------------------
-#   TranslateAI Plugin Installer (Auto-Restart)
+#   AISubtitles Plugin Installer (Auto-Restart)
 # ----------------------------------------------------
 
 PLUGIN_NAME="AISubtitles"
