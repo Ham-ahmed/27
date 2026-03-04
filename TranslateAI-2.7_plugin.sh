@@ -3,7 +3,7 @@
 #   TranslateAI Plugin Installer (Auto-Restart)
 # ----------------------------------------------------
 
-PLUGIN_NAME="TranslateAI"
+PLUGIN_NAME="AISubtitles"
 PLUGIN_VERSION="2.7"
 PLUGIN_URL="https://raw.githubusercontent.com/Ham-ahmed/27/refs/heads/main/AISubtitles-2.7.tar.gz"
 
