@@ -124,7 +124,7 @@ fi
 
 if [ ! -d "$EXTRACT_DIR" ]; then
     EXTRACT_DIR=$(find "$EXTRACT_BASE_DIR" -maxdepth 2 -type d \
-        \( -name "*$PLUGIN_NAME*" -o -name "*Translate*" \) | head -1)
+        \( -name "*$PLUGIN_NAME*" -o -name "*AISubtitles*" \) | head -1)
     
     if [ -z "$EXTRACT_DIR" ] || [ ! -d "$EXTRACT_DIR" ]; then
         EXTRACT_DIR="/tmp/${PLUGIN_NAME}_extract"
@@ -318,6 +318,6 @@ if [ -d "$BACKUP_DIR" ] && [ -n "$(ls -A "$BACKUP_DIR" 2>/dev/null)" ]; then
 fi
 
 echo ""
-echo "Thank you for installing TranslateAI plugin!"
+echo "Thank you for installing AISubtitles plugin!"
 
 exit 0
