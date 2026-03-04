@@ -10,7 +10,7 @@ PLUGIN_URL="https://raw.githubusercontent.com/Ham-ahmed/27/refs/heads/main/AISub
 clear
 echo ""
 echo "#######################################"
-echo "      TranslateAI Plugin Installer     "
+echo "      AISubtitles Plugin Installer     "
 echo "#######################################"
 echo "    This script will install the       "
 echo "         plugin TranslateAI            "
@@ -36,9 +36,9 @@ for cmd in wget tar; do
 done
 
 # Define paths
-ZIP_PATH="/tmp/TranslateAI.tar.gz"
+ZIP_PATH="/tmp/AISubtitles.tar.gz"
 EXTRACT_BASE_DIR="/tmp"
-EXTRACT_DIR="/tmp/TranslateAI"
+EXTRACT_DIR="/tmp/AISubtitles"
 INSTALL_DIR="/usr/lib/enigma2/python/Plugins/Extensions"
 BACKUP_DIR="/tmp/plugin_backup_$(date +%Y%m%d_%H%M%S)"
 
