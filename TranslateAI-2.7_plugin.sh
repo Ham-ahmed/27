@@ -123,7 +123,7 @@ check_requirements() {
         exit 1
     fi
     
-    # Check internet connectivity (using downloader instead of ping)
+    # Check internet connectivity
     check_internet
 }
 
@@ -194,23 +194,39 @@ download_package() {
 }
 
 # ==============================
+# Function: Remove old version
+# ==============================
+remove_old_version() {
+    if [ -d "${PLUGIN_DIR}" ]; then
+        echo -e "${YELLOW}⚠ Previous installation detected${NC}"
+        echo -e "${BLUE}  Automatically removing old version...${NC}"
+        
+        # Backup any configuration if needed
+        if [ -f "${PLUGIN_DIR}/etc/config.xml" ]; then
+            mkdir -p "${TEMP_DIR}/${PLUGIN_NAME}_backup"
+            cp -r "${PLUGIN_DIR}/etc" "${TEMP_DIR}/${PLUGIN_NAME}_backup/" 2>/dev/null
+            echo -e "${BLUE}  Configuration backed up to ${TEMP_DIR}/${PLUGIN_NAME}_backup${NC}"
+        fi
+        
+        # Remove old version
+        rm -rf "${PLUGIN_DIR}"
+        
+        # Also remove from other possible locations
+        rm -rf "/usr/lib/enigma2/python/Plugins/Extensions/${PLUGIN_NAME}" 2>/dev/null
+        rm -rf "/home/root/${PLUGIN_NAME}" 2>/dev/null
+        
+        echo -e "${GREEN}✓ Old version removed successfully${NC}"
+    fi
+}
+
+# ==============================
 # Function: Install package
 # ==============================
 install_package() {
     echo -e "${BLUE}▶ Installing ${PLUGIN_NAME}...${NC}"
     
-    # Check if plugin already installed
-    if [ -d "${PLUGIN_DIR}" ]; then
-        echo -e "${YELLOW}⚠ Previous installation detected${NC}"
-        echo -ne "${WHITE}  Do you want to overwrite? (y/n): ${NC}"
-        read answer
-        if [ "$answer" != "y" ] && [ "$answer" != "Y" ]; then
-            echo -e "${RED}Installation cancelled${NC}"
-            exit 0
-        fi
-        echo -e "${BLUE}  Removing old version...${NC}"
-        rm -rf "${PLUGIN_DIR}"
-    fi
+    # Remove any old version automatically
+    remove_old_version
     
     # Create plugin directory if it doesn't exist
     mkdir -p "${ENIGMA2_PLUGINS_DIR}"
@@ -231,19 +247,35 @@ install_package() {
         exit 1
     fi
     
+    # Restore configuration if backup exists
+    if [ -d "${TEMP_DIR}/${PLUGIN_NAME}_backup" ]; then
+        echo -e "${BLUE}▶ Restoring configuration...${NC}"
+        cp -r "${TEMP_DIR}/${PLUGIN_NAME}_backup/"* "${PLUGIN_DIR}/" 2>/dev/null
+        rm -rf "${TEMP_DIR}/${PLUGIN_NAME}_backup"
+        echo -e "${GREEN}✓ Configuration restored${NC}"
+    fi
+    
     # Set proper permissions
     echo -e "${BLUE}▶ Setting permissions...${NC}"
     find "${PLUGIN_DIR}" -type f -exec chmod 644 {} \;
     find "${PLUGIN_DIR}" -type d -exec chmod 755 {} \;
     
-    # Make Python files executable if needed
+    # Make Python files executable
     find "${PLUGIN_DIR}" -name "*.py" -exec chmod 755 {} \;
+    find "${PLUGIN_DIR}" -name "*.sh" -exec chmod 755 {} \;
     
     # Run post-install script if exists
     if [ -f "${PLUGIN_DIR}/postinst" ]; then
         echo -e "${BLUE}▶ Running post-installation script...${NC}"
         chmod 755 "${PLUGIN_DIR}/postinst"
         "${PLUGIN_DIR}/postinst"
+    fi
+    
+    # Run any custom install script
+    if [ -f "${PLUGIN_DIR}/install.sh" ]; then
+        echo -e "${BLUE}▶ Running custom install script...${NC}"
+        chmod 755 "${PLUGIN_DIR}/install.sh"
+        "${PLUGIN_DIR}/install.sh"
     fi
     
     # Count installed files
@@ -267,6 +299,13 @@ show_completion() {
     echo -e "${WHITE}   Facebook:   ${BLUE}https://www.facebook.com/share/g/18qCRuHz26/${NC}"
     echo -e "${GREEN}═══════════════════════════════════════════════════════════════${NC}"
     echo ""
+    
+    # Show backup info if any
+    if [ -d "${TEMP_DIR}/${PLUGIN_NAME}_backup" ]; then
+        echo -e "${YELLOW}⚠ Backup folder exists at ${TEMP_DIR}/${PLUGIN_NAME}_backup${NC}"
+        echo -e "${WHITE}  You can manually restore files from there if needed${NC}"
+        echo ""
+    fi
 }
 
 # ==============================
